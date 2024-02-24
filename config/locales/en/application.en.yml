@@ -1,11 +1,11 @@
 en:
   application:
-    name: Untitled Application
+    name: Preeschool
     owner: Unidentified Developer
     description: "You can update this description in `config/locales/en/application.en.yml`."
-    keywords: untitled application seo keywords
+    keywords: preeschool seo keywords
     support_email: change.me@localhost
-    key: untitled_application
+    key: preeschool
   webhooks/outgoing/endpoints:
     fields:
       api_version:
