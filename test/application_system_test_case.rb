@@ -60,6 +60,8 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
   include Warden::Test::Helpers
   include Waiting
 
+  # Capybara::Lockstep.debug = true # Uncomment to inspect and verify the integration in your app.
+
   def example_password
     @example_password ||= SecureRandom.hex
   end
@@ -89,13 +91,63 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
     key = ENV["TEST_DEVICE"].to_sym
     if @@test_devices.key?(key)
       puts "Running tests with the `#{ENV["TEST_DEVICE"]}` device profile specifically.".green
-      @@test_devices = {key => @@test_devices[key]}
+      @@test_devices = @@test_devices.slice(key)
     else
       puts "⚠️ `#{ENV["TEST_DEVICE"]}` isn't a valid device profile in `test/test_helper.rb`, so we'll just run *all* device profiles.".yellow
     end
   end
 
+  def device_name
+    @device_name ||= @@test_devices.each_key.find { name.include?(_1.to_s) } || raise("unknown test device, you probably want to use `device_test` to generate this test")
+  end
+
+  def display_details
+    @@test_devices[device_name]
+  end
+
+  # Generate a device specific test for each device in `@@test_devices`.
+  #
+  # Automatically resizes the display for the test too.
+  #
+  #   device_test "system test" do
+  #     p device_name
+  #     p display_details
+  #   end
+  def self.device_test(name, &block)
+    # All this is because Rails' `test` method uses `define_method`, which will report this file as the `source_location`
+    # and not the target test file where the test is actually defined.
+    #
+    # `define_method` cannot be passed the correct location, we must use `class_eval` with a source string of Ruby for that.
+    # But using a string means we can't refer to the block, like `define_method(name, &block)` would.
+    #
+    # So we inject a module that we define methods via `test` to pass the block to, then we override that
+    # via `class_eval` to point it to the correct location.
+    location = caller_locations(1, 1).first
+
+    name = name.remove(/[^\w ]/) # `def` is stricter than `define_method` so we have to scrub characters.
+    @device_test_methods ||= Module.new.tap { include _1 }
+
+    @@test_devices.each_key do |device_name|
+      test_name = ActiveSupport::Testing::Declarative.instance_method(:test).bind_call(@device_test_methods, "#{name} on a #{device_name}", &block)
+
+      # Standard recommends __FILE__ and __LINE__ + 1 here, which points to `application_system_test_case.rb`. It's wrong.
+      # TODO: Figure out why the browser window opens if `resize_display` is done in `setup`.
+      class_eval <<~RUBY, location.path, location.lineno # standard:disable Style/EvalWithLocation
+        def #{test_name}; resize_display; super; end # Use single line to match source line numbers properly.
+      RUBY
+    end
+  end
+
   def resize_for(display_details)
+    ActiveSupport::Deprecation.warn <<~END_OF_MESSAGE
+      `resize_for` is deprecated.
+      Please run the following command to update your tests:
+      ./bin/updates/system_tests/use_device_test
+    END_OF_MESSAGE
+    resize_display(display_details)
+  end
+
+  def resize_display(display_details = self.display_details)
     if use_cuprite?
       page.driver.resize(*calculate_resolution(display_details))
     else
@@ -103,19 +155,40 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
     end
   end
 
-  def within_team_menu_for(display_details)
+  def within_team_menu(display_details = self.display_details)
     first("#team").hover
     yield
   end
+  alias_method :within_team_menu_for, :within_team_menu
 
-  def within_user_menu_for(display_details)
+  def within_user_menu(display_details = self.display_details)
     find("#user").hover
     yield
   end
+  alias_method :within_user_menu_for, :within_user_menu
 
-  def within_developers_menu_for(display_details)
+  def within_developers_menu(display_details = self.display_details)
     find("#developers").hover
     yield
+  end
+  alias_method :within_developers_menu_for, :within_developers_menu
+
+  def within_membership_row(membership)
+    within "tr[data-id='#{membership.id}']" do
+      yield
+    end
+  end
+
+  def within_current_memberships_table
+    within "tbody[data-model='Membership'][data-scope='current']" do
+      yield
+    end
+  end
+
+  def within_former_memberships_table
+    within "tbody[data-model='Membership'][data-scope='tombstones']" do
+      yield
+    end
   end
 
   def open_mobile_menu
@@ -123,7 +196,7 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
   end
 
   # sign out.
-  def sign_out_for(display_details)
+  def sign_out(display_details = self.display_details)
     if display_details[:mobile]
       open_mobile_menu
     else
@@ -132,41 +205,71 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
     click_on "Logout"
 
     # make sure we're actually signed out.
-    # (this will vary depending on where you send people when they sign out.)
-    assert page.has_content? "Sign In"
+    assert_text(/Signed out successfully|You need to sign in or sign up before continuing/)
   end
+  alias_method :sign_out_for, :sign_out
 
-  def sign_in_from_homepage_for(display_details)
-    # TODO the tailwind port of bullet train doesn't currently support a homepage.
+  def new_session_page(display_details = self.display_details)
+    # We actually want to go straight to the user session and
+    # not the home page in case the home page doesn't have new session logic.
     visit new_user_session_path
 
     # this forces capybara to wait until the proper page loads.
     # otherwise our tests will immediately start trying to match things before the page even loads.
-    assert page.has_content?("Sign In")
+    assert_text("Sign In")
   end
+  alias_method :new_session_page_for, :new_session_page
 
-  def sign_up_from_homepage_for(display_details)
-    # TODO the tailwind port of bullet train doesn't currently support a homepage.
+  def sign_in_from_homepage(display_details = self.display_details)
+    puts "#{__callee__} is deprecated".red
+    puts "  please switch to: new_session_page".red
+    puts "  called from #{caller(1..1).first}".red
+    new_session_page_for(display_details)
+  end
+  alias_method :sign_in_from_homepage_for, :sign_in_from_homepage
+
+  def new_registration_page(display_details = self.display_details)
+    # TODO: Adjust tests to start from the home page.
+    # Ensure no one is signed in before trying to register a new account.
+    logout
+
     visit new_user_registration_path
+
+    if invitation_only?
+      assert_text("You need to sign in or sign up before continuing.")
+      refute_text("Create Your Account")
+      visit invitation_path(key: ENV["INVITATION_KEYS"].split(",\s+").first)
+    end
 
     # this forces capybara to wait until the proper page loads.
     # otherwise our tests will immediately start trying to match things before the page even loads.
-    assert page.has_content?("Create Your Account")
+    assert_text("Create Your Account")
   end
+  alias_method :new_registration_page_for, :new_registration_page
 
-  def within_homepage_navigation_for(display_details)
+  def sign_up_from_homepage(display_details = self.display_details)
+    puts "#{__callee__} is deprecated".red
+    puts "  please switch to: new_registration_page".red
+    puts "  called from #{caller(1..1).first}".red
+    new_registration_page_for(display_details)
+  end
+  alias_method :sign_up_from_homepage_for, :sign_up_from_homepage
+
+  def within_homepage_navigation(display_details = self.display_details)
     if display_details[:mobile]
       open_mobile_menu
     end
     yield
   end
+  alias_method :within_homepage_navigation_for, :within_homepage_navigation
 
-  def within_primary_menu_for(display_details)
+  def within_primary_menu(display_details = self.display_details)
     open_mobile_menu if display_details[:mobile]
     within ".menu" do
       yield
     end
   end
+  alias_method :within_primary_menu_for, :within_primary_menu
 
   def be_invited_to_sign_up
     # if the application is configured to only allow invitation-only sign-ups, visit the invitation url.
@@ -241,9 +344,9 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
   def find_stimulus_controller_for_label(label, stimulus_controller, wrapper = false)
     if wrapper
       wrapper_el = find("label", text: /\A#{label}\z/).first(:xpath, ".//..//..")
-      wrapper_el if wrapper_el["data-controller"] == stimulus_controller
+      wrapper_el if wrapper_el["data-controller"].split(" ").include?(stimulus_controller)
     else
-      find("label", text: /\A#{label}\z/).first(:xpath, ".//..").first('[data-controller="' + stimulus_controller + '"]')
+      find("label", text: /\A#{label}\z/).first(:xpath, ".//..").first('[data-controller~="' + stimulus_controller + '"]')
     end
   end
 
@@ -284,40 +387,22 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
   end
 
   def complete_pricing_page(card = nil)
-    assert page.has_content?("Select Your Plan")
+    assert_text("The Pricing Page")
     sleep 0.5
-    within(".pricing-plan.highlight") do
-      start_subscription
-    end
-
+    start_subscription
     complete_payment_page(card)
   end
 
   def complete_payment_page(card = nil)
     # we should be on the credit card page.
-    if free_trial?
-      assert page.has_content?("Start Your Free Trial")
-      assert page.has_content?("30-Day Free Trial".upcase)
-    else
-      assert page.has_content?("Upgrade Your Account")
-      assert page.has_content?("It Will Work For You!".upcase)
-    end
-
+    assert_text("Subscribe to #{I18n.t("application.name")} Pro")
     fill_in_stripe_elements(card)
-
-    if free_trial?
-      click_on "Start Free Trial"
-    else
-      click_on "Upgrade Now"
-    end
+    click_on "Subscribe"
+    sleep 3
   end
 
   def start_subscription
-    if free_trial?
-      click_on "Start Trial"
-    else
-      click_on "Sign Up"
-    end
+    click_on "Select"
   end
 
   def fill_in_stripe_elements(card = nil)
@@ -331,27 +416,10 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
     }
 
     using_wait_time(10) do
-      card_number_frame = find("#card-number iframe")
-      cvc_frame = find("#card-cvc iframe")
-      card_exp = find("#card-exp iframe")
-
-      within_frame(card_number_frame) do
-        card[:card_number].chars.each do |digit|
-          find_field("cardnumber").send_keys(digit)
-        end
-      end
-
-      within_frame(cvc_frame) do
-        card[:security_code].chars.each do |digit|
-          find_field("cvc").send_keys(digit)
-        end
-      end
-
-      within_frame(card_exp) do
-        (card[:expiration_month] + card[:expiration_year]).chars.each do |digit|
-          find_field("exp-date").send_keys(digit)
-        end
-      end
+      fill_in placeholder: "1234 1234 1234 1234", with: card[:card_number]
+      fill_in placeholder: "MM / YY", with: card[:expiration_month] + card[:expiration_year]
+      fill_in placeholder: "CVC", with: card[:security_code]
+      fill_in "Name on card", with: "Hanako"
     end
   end
 
@@ -360,9 +428,9 @@ class ApplicationSystemTestCase < ActionDispatch::SystemTestCase
       class Bridge
         @@execute_sleep_time = 0
         alias_method :patched_execute, :execute
-        def execute(*args)
+        def execute(*)
           sleep @@execute_sleep_time
-          patched_execute(*args)
+          patched_execute(*)
         end
 
         def self.slow_down_execute_time

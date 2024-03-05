@@ -1,1 +1,0 @@
-class RemovingLastTeamAdminException < RuntimeError; end

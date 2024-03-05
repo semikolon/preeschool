@@ -9,6 +9,18 @@ class ResolverSystemTest < ApplicationSystemTestCase
     assert `bin/resolve BulletTrain::Resolver`.include?("lib/bullet_train/resolver.rb")
   end
 
+  test "bin/resolve can resolve `shared/attributes/text`" do
+    relative_view_path = "app/views/themes/base/attributes/_text.html.erb"
+    local_view_path = Dir.glob("#{Rails.root}/app/views/**/*/attributes/_text.html.erb").pop
+    if local_view_path
+      assert `bin/resolve shared/attributes/text`.include?(local_view_path)
+    else
+      themes_gem = `bundle show bullet_train-themes`.chomp
+      absolute_path = themes_gem + "/" + relative_view_path
+      assert `bin/resolve shared/attributes/text`.include?(absolute_path)
+    end
+  end
+
   unless ENV["SKIP_RESOLVE_TEST"].present?
     test "`bin/resolve` can resolve `shared/box`" do
       # TODO Figure out how to make this test pass when we're working on a checked out copy of the theme.

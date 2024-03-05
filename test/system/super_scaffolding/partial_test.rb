@@ -14,7 +14,9 @@ class SuperScaffoldingSystemTest < ApplicationSystemTestCase
   #   bundle exec test/bin/setup-super-scaffolding-system-test
   #
   # to run this test:
-  #   rails test test/system/super_scaffolding_partial_test.rb
+  #   rails test test/system/super_scaffolding/partial_test.rb
+  # to run the super scaffolding test suite as a whole:
+  #   rails test test/system/super_scaffolding/
   #
   # after the test you can tear down what we've done here in the db:
   #   rake db:migrate VERSION=`ls db/migrate | sort | tail -n 9 | head -n 1`
@@ -40,27 +42,42 @@ class SuperScaffoldingSystemTest < ApplicationSystemTestCase
       login_as(@jane, scope: :user)
       visit account_team_path(@jane.current_team)
 
-      assert page.has_content?("Test Files")
+      assert_text("Test Files")
       click_on "Add New Test File"
 
       fill_in "Name", with: "Test File Name"
-      assert page.has_content?("Upload New Document")
+      assert_text("Upload New Document")
       fill_in "Name", with: "Foo"
-      attach_file("test/support/foo.txt", make_visible: true)
+      attach_file("Foo", "test/support/foo.txt", make_visible: true)
+      attach_file("Bars", ["test/support/foo.txt", "test/support/foo-two.txt"], make_visible: true)
       click_on "Create Test File"
 
-      assert page.has_content?("Test File was successfully created.")
+      assert_text("Test File was successfully created.")
       refute TestFile.first.foo.blank?
+      assert_equal 2, TestFile.first.bars.count
 
       click_on "Edit"
-      assert page.has_content?("Remove Current Document")
-      find("span", text: "Remove Current Document").click
+
+      assert_text("Remove Current Document")
+      within "[data-fields--file-item-id-value='#{TestFile.first.foo.id}']" do
+        find("span", text: "Remove Current Document").click
+      end
       click_on "Update Test File"
 
-      assert page.has_content?("Test File was successfully updated.")
+      assert_text("Test File was successfully updated.")
       assert TestFile.first.foo.blank?
 
-      # This test consistently adds a new text file,
+      click_on "Edit"
+      assert_text("Remove Current Document")
+      within "[data-fields--file-item-id-value='#{TestFile.first.bars.first.id}']" do
+        find("span", text: "Remove Current Document").click
+      end
+      click_on "Update Test File"
+
+      assert_text("Test File was successfully updated.")
+      assert_equal 1, TestFile.first.bars.count
+
+      # This test consistently adds several new text files,
       # so we clear out all instances of foo from the storage directory.
       storage = Dir.glob("tmp/storage/**")
       storage.each { |dir| FileUtils.rm_r(dir) if dir.match?(/\/([0-9]|[a-z]){2}$/) }
@@ -75,21 +92,21 @@ class SuperScaffoldingSystemTest < ApplicationSystemTestCase
       login_as(@jane, scope: :user)
       visit account_team_path(@jane.current_team)
 
-      assert page.has_content?("Add New Color Picker")
+      assert_text("Add New Color Picker")
       click_on "Add New Color Picker"
 
-      assert page.has_content?("Color Picker Value")
+      assert_text("Color Picker Value")
       color_picker_buttons = all(".button-color")
       assert_equal color_picker_buttons.size, 8
       color_picker_buttons.first.click
       click_on "Create Color Picker"
 
-      assert page.has_content?("Color Picker was successfully created.")
+      assert_text("Color Picker was successfully created.")
 
       # The default value can be found in the color picker's locale.
       color_picker_default_value = "#9C73D2"
       assert_equal ColorPicker.first.color_picker_value, color_picker_default_value
-      assert page.has_content?(color_picker_default_value)
+      assert_text(color_picker_default_value)
     end
   end
 
@@ -113,20 +130,25 @@ class SuperScaffoldingSystemTest < ApplicationSystemTestCase
       find("#partial_test_multiple_buttons_test_two+button", visible: :all).click
       find("#partial_test_multiple_buttons_test_three+button", visible: :all).click
       # Date partial
-      find("#partial_test_date_test").click
+      page.all('input[id^="partial_test_date_test"]').each do |el|
+        el.click
+      end
       find(".daterangepicker").click_on("Apply") # Chooses today's date.
       # DateTime partial
-      find("#partial_test_date_time_test").click
+      page.all('input[id^="partial_test_date_time_test"]').each do |el|
+        el.click
+      end
       find(".daterangepicker").click_on("Apply")
       # File partial
       attach_file("test/support/foo.txt", make_visible: true)
       # Single Option partial
-      choose("One")
+      # TODO: Not sure why we have to specify this, but not the other button with "one".
+      page.all("input").find { |node| node.value == "one" }.click
       # Multiple Option partial
       check("One")
       check("Three")
       # Password partial
-      # fill_in "Password Test", with: "testpassword123"
+      fill_in "Password Test", with: "testpassword123"
       # Phone Field Partial
       fill_in "Phone Field Test", with: "(000)000-0000"
       # Super Select partial
@@ -137,9 +159,20 @@ class SuperScaffoldingSystemTest < ApplicationSystemTestCase
       find("#partial_test_multiple_super_select_test").find("option[value='two']").select_option
       # Text Area partial
       fill_in "Text Area Test", with: "Lorem ipsum dolor sit amet, consectetur adipiscing elit"
+      # Number Field Partial
+      fill_in "Number Field Test", with: 47
+
+      assert_text "State / Province / Region"
+      select "United States", from: "Country"
+      assert_text "State"
+
+      fill_in "Address", with: "123 Main St."
+      fill_in "City", with: "New York"
+      select "New York", from: "State"
+      fill_in "Zip code", with: "10001"
 
       click_on "Create Partial Test"
-      assert page.has_content?("Partial Test was successfully created.")
+      assert_text("Partial Test was successfully created.")
 
       # Text field
       partial_test = PartialTest.first
@@ -166,8 +199,9 @@ class SuperScaffoldingSystemTest < ApplicationSystemTestCase
       refute_nil partial_test.multiple_options_test
       assert_equal partial_test.multiple_options_test, ["one", "three"]
       # Password
-      # refute_nil partial_test.password_test
-      # assert_equal partial_test.password_test, "testpassword123"
+      refute_nil partial_test.password_test
+      assert_equal partial_test.password_test, "testpassword123"
+      assert_text("●" * partial_test.password_test.length)
       # Phone Field
       refute_nil partial_test.phone_field_test
       assert_equal partial_test.phone_field_test, "(000)000-0000"
@@ -180,6 +214,16 @@ class SuperScaffoldingSystemTest < ApplicationSystemTestCase
       # Text Area
       refute_nil partial_test.text_area_test
       assert_equal partial_test.text_area_test, "Lorem ipsum dolor sit amet, consectetur adipiscing elit"
+      # Number Field
+      refute_nil partial_test.number_field_test
+      assert_equal partial_test.number_field_test, 47
+      # Address Field
+      refute_nil partial_test.address_test
+      assert_equal partial_test.address_test.address_one, "123 Main St."
+      assert_equal partial_test.address_test.city, "New York"
+      assert_equal partial_test.address_test.country_id, 233
+      assert_equal partial_test.address_test.region_id, 1452
+      assert_equal partial_test.address_test.postal_code, "10001"
     end
   end
 end

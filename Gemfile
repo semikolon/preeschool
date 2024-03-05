@@ -9,7 +9,7 @@ git_source(:github) { |repo| "https://github.com/#{repo}.git" }
 ruby(File.read(File.expand_path(".ruby-version", __dir__)))
 
 # Bundle edge Rails instead: gem "rails", github: "rails/rails", branch: "main"
-gem "rails", "~> 7.0.0"
+gem "rails", "~> 7.1.2"
 
 # The original asset pipeline for Rails [https://github.com/rails/sprockets-rails]
 gem "sprockets-rails"
@@ -36,7 +36,7 @@ gem "cssbundling-rails"
 gem "jbuilder"
 
 # Use Redis adapter to run Action Cable in production
-gem "redis", "~> 5.0.5"
+gem "redis", "~> 5.1.0"
 
 # Use Kredis to get higher-level data types in Redis [https://github.com/rails/kredis]
 # gem "kredis"
@@ -58,15 +58,15 @@ gem "chronic"
 
 group :development, :test do
   # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
-  # TODO: Remove version restriction once Ruby 3.2.2 is released.
-  # See: https://github.com/ruby/debug/issues/898#issuecomment-1451804022
-  gem "debug", "1.8.0", platforms: %i[mri mingw x64_mingw]
+  gem "debug", platforms: %i[mri mingw x64_mingw]
 
   # A gem for generating test coverage results in your browser.
   gem "simplecov", require: false
 
   # Generate test objects.
-  gem "factory_bot_rails"
+  # 6.3.0 and 6.4.0 have a bug https://github.com/thoughtbot/factory_bot_rails/issues/433
+  # And now 6.4.1 and 6.4.2 break some things: https://github.com/bullet-train-co/bullet_train-core/issues/707
+  gem "factory_bot_rails", "~> 6.2", "!= 6.3.0", "!= 6.4.0", "!= 6.4.1", "!= 6.4.2"
 end
 
 group :development do
@@ -78,20 +78,31 @@ group :development do
 
   # Speed up commands on slow machines / big apps [https://github.com/rails/spring]
   # gem "spring"
+
+  # Workaround to get image process to behave on a Mac in development
+  # https://github.com/libvips/ruby-vips/issues/155#issuecomment-1047370993
+  gem "ruby-vips"
+
+  # Generate a diagram of all the models in the app by running:
+  # bundle exec erd
+  gem "rails-erd"
 end
 
 group :test do
   # Use system testing [https://guides.rubyonrails.org/testing.html#system-testing]
-  gem "capybara", github: "teamcapybara/capybara"
+  gem "capybara", "~> 3.39"
+
+  # Synchronize Capybara commands with client-side JavaScript and AJAX requests to greatly improve
+  # system test stability. Only works on the Selenium Driver though.
+  gem "capybara-lockstep"
 
   # Selenium is the default default Capybara driver for system tests that ships with
   # Rails. Cuprite is an alternative driver that uses Chrome's native DevTools protocol
   # and offers improved speed and reliability, but only works with Chrome. If you want
-  # to switch to Cuprite, you can comment out the `selenium-webdriver` and `webdrivers`
-  # gems and uncomment the `cuprite` gem below. Bullet Train will automatically load
+  # to switch to Cuprite, you can comment out the `selenium-webdriver` gem
+  # and uncomment the `cuprite` gem below. Bullet Train will automatically load
   # the correct configuration based on which gem is included.
   gem "selenium-webdriver"
-  gem "webdrivers"
 
   # gem "cuprite"
 end
@@ -99,25 +110,42 @@ end
 # BULLET TRAIN GEMS
 # This section is the list of Ruby gems included by default for Bullet Train.
 
+# We use a constant here so that we can ensure that all of the bullet_train-*
+# packages are on the same version.
+BULLET_TRAIN_VERSION = "1.6.35"
+
 # Core packages.
-gem "bullet_train"
-gem "bullet_train-super_scaffolding"
-gem "bullet_train-api"
-gem "bullet_train-outgoing_webhooks"
-gem "bullet_train-incoming_webhooks"
-gem "bullet_train-themes"
-gem "bullet_train-themes-light"
-gem "bullet_train-integrations"
-gem "bullet_train-integrations-stripe"
+gem "bullet_train", BULLET_TRAIN_VERSION
+gem "bullet_train-super_scaffolding", BULLET_TRAIN_VERSION
+gem "bullet_train-api", BULLET_TRAIN_VERSION
+gem "bullet_train-outgoing_webhooks", BULLET_TRAIN_VERSION
+gem "bullet_train-incoming_webhooks", BULLET_TRAIN_VERSION
+gem "bullet_train-themes", BULLET_TRAIN_VERSION
+gem "bullet_train-themes-light", BULLET_TRAIN_VERSION
+gem "bullet_train-integrations", BULLET_TRAIN_VERSION
+gem "bullet_train-integrations-stripe", BULLET_TRAIN_VERSION
 
 # Optional support packages.
-gem "bullet_train-sortable"
-gem "bullet_train-scope_questions"
-gem "bullet_train-obfuscates_id"
+gem "bullet_train-sortable", BULLET_TRAIN_VERSION
+gem "bullet_train-scope_questions", BULLET_TRAIN_VERSION
+gem "bullet_train-obfuscates_id", BULLET_TRAIN_VERSION
+
+# Core gems that are dependencies of gems listed above. Technically they
+# shouldn't need to be listed here, but we list them so that we can keep
+# version numbers in sync.
+gem "bullet_train-fields", BULLET_TRAIN_VERSION
+gem "bullet_train-has_uuid", BULLET_TRAIN_VERSION
+gem "bullet_train-roles", BULLET_TRAIN_VERSION
+gem "bullet_train-scope_validator", BULLET_TRAIN_VERSION
+gem "bullet_train-super_load_and_authorize_resource", BULLET_TRAIN_VERSION
+gem "bullet_train-themes-tailwind_css", BULLET_TRAIN_VERSION
 
 gem "devise"
 gem "devise-two-factor"
 gem "rqrcode"
+
+# Admin panel
+gem "avo", ">= 3.1.7"
 
 group :development do
   # Open any sent emails in your browser instead of having to setup an SMTP trap.
@@ -139,6 +167,9 @@ end
 group :test do
   # Helps smooth over flakiness in system tests.
   gem "minitest-retry"
+
+  # Better test output
+  gem "minitest-reporters"
 
   # Interact with emails during testing.
   gem "capybara-email"
@@ -167,6 +198,8 @@ group :production do
 
   # Use S3 for Active Storage by default.
   gem "aws-sdk-s3", require: false
+
+  gem "terser"
 end
 
 # Use Ruby hashes as readonly datasources for ActiveRecord-like models.

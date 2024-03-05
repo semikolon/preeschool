@@ -5,11 +5,19 @@ class PaginationTest < ApplicationSystemTestCase
     super
     @jane = create :onboarded_user, first_name: "Jane", last_name: "Smith"
     @team = @jane.current_team
+
+    @original_hide_things = ENV["HIDE_THINGS"]
+    ENV["HIDE_THINGS"] = "false"
+    Rails.application.reload_routes!
   end
 
-  test "pagination works properly" do
-    display_details = @@test_devices[:macbook_pro_15_inch]
-    resize_for(display_details)
+  def teardown
+    super
+    ENV["HIDE_THINGS"] = @original_hide_things
+    Rails.application.reload_routes!
+  end
+
+  device_test "pagination works properly" do
     login_as(@jane, scope: :user)
 
     creative_concept = @team.scaffolding_absolutely_abstract_creative_concepts.create(name: "Test Name")
@@ -19,12 +27,20 @@ class PaginationTest < ApplicationSystemTestCase
       creative_concept.completely_concrete_tangible_things.create(text_field_value: "Test #{n + 1}")
     end
 
+    visit root_path
+    if billing_enabled?
+      unless freemium_enabled?
+        complete_pricing_page
+        sleep 2
+      end
+    end
+
     visit account_scaffolding_absolutely_abstract_creative_concept_path(creative_concept)
 
-    assert page.has_content?("Test 1")
-    refute page.has_content?("Test #{Pagy::DEFAULT[:items] + 1}")
+    assert_text("Test 1")
+    refute_text("Test #{Pagy::DEFAULT[:items] + 1}")
 
     click_on "Next"
-    assert page.has_content?("Test #{Pagy::DEFAULT[:items] + 1}")
+    assert_text("Test #{Pagy::DEFAULT[:items] + 1}")
   end
 end

@@ -14,8 +14,15 @@ class AnimationsTest < ApplicationSystemTestCase
 
     display_details = {resolution: [750, 1334], mobile: true, high_dpi: true}
     animation_duration = 0.5
-    resize_for(display_details)
+    resize_display(display_details)
     login_as(@jane, scope: :user)
+    visit root_path
+    if billing_enabled?
+      unless freemium_enabled?
+        complete_pricing_page
+        sleep 2
+      end
+    end
 
     visit account_team_path(@jane.current_team)
 
