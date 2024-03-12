@@ -293,7 +293,10 @@ GEM
       devise (~> 4.0)
       railties (~> 7.0)
       rotp (~> 6.0)
+    diff-lcs (1.5.1)
     docile (1.4.0)
+    dockerfile-rails (1.6.6)
+      rails (>= 3.0.0)
     domain_name (0.6.20240107)
     doorkeeper (5.6.9)
       railties (>= 5)
@@ -576,6 +579,23 @@ GEM
       chunky_png (~> 1.0)
       rqrcode_core (~> 1.0)
     rqrcode_core (1.2.0)
+    rspec-core (3.13.0)
+      rspec-support (~> 3.13.0)
+    rspec-expectations (3.13.0)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.13.0)
+    rspec-mocks (3.13.0)
+      diff-lcs (>= 1.2.0, < 2.0)
+      rspec-support (~> 3.13.0)
+    rspec-rails (5.0.3)
+      actionpack (>= 5.2)
+      activesupport (>= 5.2)
+      railties (>= 5.2)
+      rspec-core (~> 3.10)
+      rspec-expectations (~> 3.10)
+      rspec-mocks (~> 3.10)
+      rspec-support (~> 3.10)
+    rspec-support (3.13.1)
     rubocop (1.59.0)
       json (~> 2.3)
       language_server-protocol (>= 3.17.0)
@@ -709,6 +729,7 @@ PLATFORMS
   arm64-darwin-21
   arm64-darwin-22
   arm64-darwin-23
+  x86_64-darwin-20
   x86_64-darwin-21
   x86_64-linux
 
@@ -744,6 +765,7 @@ DEPENDENCIES
   debug
   devise
   devise-two-factor
+  dockerfile-rails (>= 1.4)
   factory_bot_rails (~> 6.2, != 6.4.2, != 6.4.1, != 6.4.0, != 6.3.0)
   foreman
   honeybadger
@@ -765,6 +787,7 @@ DEPENDENCIES
   rails_best_practices
   redis (~> 5.1.0)
   rqrcode
+  rspec-rails (~> 5.0.0)
   ruby-vips
   selenium-webdriver
   sentry-rails
